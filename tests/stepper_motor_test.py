@@ -26,7 +26,7 @@ def test_stepper():
     
     print("\nTest 4: Step backward 200 microsteps")
     motor.set_direction(clockwise=False)
-    motor.step(200, delay=0.005)
+    motor.step(700, delay=0.005)
     print(f"Position after backward steps: {motor.position}")
     expected_pos = (expected_pos - 200) % motor.steps_per_rev
     print("[PASS]" if motor.position == expected_pos else "[FAIL]")
