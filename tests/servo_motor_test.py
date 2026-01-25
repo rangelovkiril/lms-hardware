@@ -1,6 +1,6 @@
+import sys
 import time
-from hardware.servo_motor import Servo   # adjust import if your file name is different
-
+from hardware.servo_motor import Servo
 
 def test_servo():
     """

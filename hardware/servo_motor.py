@@ -26,19 +26,17 @@ class Servo:
         Raises:
             RuntimeError: If unable to connect to the pigpio daemon
         """
-        # Connect to pigpio daemon
+        
         self.__pi = pigpio.pi()
         if not self.__pi.connected:
             raise RuntimeError("Could not connect to pigpio daemon")
 
-        # Servo configuration
         self.__pin: int = pin
         self.__min_us: float = min_us
         self.__max_us: float = max_us
         self.__speed: int = speed
         self.__current_angle: float = 0.0
 
-        # Set initial position
         self.set_angle(angle)
 
     def __angle_to_pwm(self, angle: float) -> float:
@@ -61,7 +59,25 @@ class Servo:
         pwm = self.__min_us + (self.__max_us - self.__min_us) * (angle / 180)
         return pwm
 
-    def set_angle(self, angle: float) -> None:
+    def __clamp_angle(self, angle: float) -> float:
+        """
+        Ensures the angle is within [0, 180] degrees.
+
+        Args:
+            angle (float): Input angle
+
+        Returns:
+            float: Clamped angle within bounds
+
+        Raises:
+            ValueError: If angle is out of bounds
+        """
+        if not 0.0 <= angle <= 180.0:
+            raise ValueError(f"Angle {angle} out of bounds (0–180°)")
+        return angle
+
+
+    def set_angle(self, angle: float, smooth: bool = True) -> None:
         """
         Moves the servo to a specific angle, waiting the required
         physical time according to the servo's maximum speed.
@@ -69,16 +85,21 @@ class Servo:
         Args:
             angle (float): Target angle (0–180°)
         """
-        # Convert angle to PWM signal
-        pwm = self.__angle_to_pwm(angle)
-        self.__pi.set_servo_pulsewidth(self.__pin, pwm)
+        angle = self.__clamp_angle(angle)
 
-        # Calculate physical movement time
-        delta_angle = abs(angle - self.__current_angle)
-        time.sleep(delta_angle / self.__speed)  # Wait for servo to reach position
+        if smooth: 
+            self.move_smooth(angle)
+        else:
+            # Convert angle to PWM signal
+            pwm = self.__angle_to_pwm(angle)
+            self.__pi.set_servo_pulsewidth(self.__pin, pwm)
 
-        # Update current angle
-        self.__current_angle = angle
+            # Calculate physical movement time
+            delta_angle = abs(angle - self.__current_angle)
+            time.sleep(delta_angle / self.__speed)  # Wait for servo to reach position
+
+            # Update current angle
+            self.__current_angle = angle
 
     def rotate(self, delta: float) -> None:
         """
@@ -97,6 +118,42 @@ class Servo:
             float: Current servo angle
         """
         return self.__current_angle
+
+    def move_smooth(self, target: float, step: float = 5.0) -> None:
+        """
+        Smoothly moves the servo to a target angle using incremental steps.
+
+        Args:
+            target (float): Target angle (0–180°)
+            step (float): Angle step per iteration (degrees)
+        """
+
+        target = self.__clamp_angle(target)
+        current = self.__current_angle
+
+        if target == current:
+            return
+
+        direction = 1.0 if target > current else -1.0
+        step *= direction
+
+        delay = abs(step) / self.__speed  # seconds per step
+
+        angle = current
+
+        while (angle - target) * direction < 0:
+            angle += step
+
+            # clamp final step
+            if (angle - target) * direction > 0:
+                angle = target
+
+            pwm = self.__angle_to_pwm(angle)
+            self.__pi.set_servo_pulsewidth(self.__pin, pwm)
+            time.sleep(delay)
+
+        self.__current_angle = target
+
 
     def stop(self) -> None:
         """
