@@ -1,12 +1,13 @@
 import time
-from hardware.lidar import TFminiI2C
+from hardware.lidar import Lidar
 from utils.logger import log
 
 
 def run_hardware_unit_test():
     print("--- Starting TFmini-S Hardware Unit Test ---")
     try:
-        lidar = TFminiI2C(bus_id=3, address=0x10)
+        lidar = Lidar(bus_id=3, address=0x10)
+        lidar.set_kalman_filter(True)
     except Exception as e:
         print(f"[FAIL] Could not initialize I2C bus: {e}")
         return

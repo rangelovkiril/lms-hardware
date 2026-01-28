@@ -3,7 +3,7 @@ from smbus2 import SMBus, i2c_msg
 from utils.logger import log
 
 
-class TFminiI2C:
+class Lidar:
     def __init__(self, bus_id=1, address=0x10):
         self.bus_id = bus_id
         self.address = address
@@ -26,6 +26,25 @@ class TFminiI2C:
         except Exception as e:
             log("ERROR", "LIDAR", f"Failed to open I2C bus: {e}")
             raise
+
+    def _send_comand(self, command):
+        try:
+            write = i2c_msg.write(self.address, command)
+            self.bus.i2c_rdwr(write)
+            time.sleep(0.1)
+            return True
+        except Exception as e:
+            log("ERROR", "LIDAR", f"Command {command} failed: {e}")
+            return False
+
+    def set_kalman_filter(self, active=True):
+        cmd = self.KALMAN_FILTER_ON_CMD if active else self.KALMAN_FILTER_OFF_CMD
+        status = "ON" if active else "OFF"
+
+        if self._send_comand(cmd):
+            log("INFO", "LIDAR", f"Kalman filter turned {status}")
+            return True
+        return False
 
     def update(self):
         """
