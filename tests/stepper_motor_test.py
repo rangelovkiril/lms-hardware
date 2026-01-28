@@ -1,5 +1,5 @@
 import time
-from hardware.stepper_motor import StepperMotor, SAFE_MICROSTEP
+from drivers.stepper_motor import StepperMotor, SAFE_MICROSTEP
 
 
 def test_stepper():

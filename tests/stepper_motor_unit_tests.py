@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-from hardware.stepper_motor import StepperMotor, SAFE_MICROSTEP
+from drivers.stepper_motor import StepperMotor, SAFE_MICROSTEP
 
 
 class TestStepperMotor(unittest.TestCase):

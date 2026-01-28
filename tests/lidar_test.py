@@ -1,5 +1,5 @@
 import time
-from hardware.lidar import Lidar
+from drivers.lidar import Lidar
 from utils.logger import log
 
 
