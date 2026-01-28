@@ -1,12 +1,13 @@
 import time
 from drivers.azimuth_controller import AzimuthController
 
+
 def test_hardware_precision():
     print("--- Starting Azimuth Hardware Test (Manual Speed Control) ---")
-    
+
     # Initialize without delay parameter in __init__
     az = AzimuthController(gear_ratio=4, arg_microstep=8)
-    
+
     # Define some standard delays (seconds between steps)
     FAST = 0.0005
     SLOW = 0.002
@@ -43,6 +44,7 @@ def test_hardware_precision():
         az.motor.disable()
         az.motor.cleanup()
         print("--- Test Finished: Motor Disabled ---")
+
 
 if __name__ == "__main__":
     test_hardware_precision()
