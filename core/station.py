@@ -46,8 +46,8 @@ class LMSStation:
         self.lidar1.update()
         self.lidar2.update()
 
-        d1 = self.lidar1.distance / 1000.0
-        d2 = self.lidar2.distance / 1000.0
+        d1 = self.lidar1.distance / 100.0
+        d2 = self.lidar2.distance / 100.0
 
         valid_points = []
         for d in [d1, d2]:
