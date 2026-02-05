@@ -139,6 +139,39 @@ class LMSStation:
 
         return False
 
+    def move_elevation(
+        self,
+        target_el: float,
+        tolerance_deg: float = 0.5,
+        timeout: float = 1.0
+    ) -> float:
+        clamped_el = max(self.el_min, min(target_el, self.el_max))
+        self.servo.set_angle(clamped_el)
+        start = time.time()
+        while True:
+            cur_el = self.servo.get_angle()
+            self.elevation = cur_el
+            if abs(cur_el - clamped_el) <= tolerance_deg:
+                break
+            if (time.time() - start) > timeout:
+                log("WARN", "STATION", f"Servo did not reach {clamped_el}° within timeout; at {cur_el}°")
+                break
+            time.sleep(0.01)
+        return self.elevation
+
+    def log_target_found(self) -> dict:
+        log(
+            "INFO",
+            "LOCATION ROUTINE",
+            f"Found target at:\n- az: {self.azimuth}\n- el: {self.elevation}\n- range: {self.distance}"
+        )
+        return {
+            "timestamp": time.time(),
+            "az": self.azimuth,
+            "el": self.elevation,
+            "range_m": self.distance,
+        }
+
     def disable(self) -> None:
         self.az_actuator.disable()
         self.servo.stop()
