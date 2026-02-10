@@ -6,6 +6,7 @@ import threading
 
 from core.station import LMSStation
 
+
 def scan_grid(
     az_min: float,
     az_max: float,
@@ -21,7 +22,9 @@ def scan_grid(
         az_values = [az_min]
     else:
         a = az_min
-        while (a <= az_max + 1e-9 and az_step > 0) or (a >= az_max - 1e-9 and az_step < 0):
+        while (a <= az_max + 1e-9 and az_step > 0) or (
+            a >= az_max - 1e-9 and az_step < 0
+        ):
             az_values.append(round(a, 6))
             a += az_step
 
@@ -30,7 +33,9 @@ def scan_grid(
         el_values = [el_min]
     else:
         e = el_min
-        while (e <= el_max + 1e-9 and el_step > 0) or (e >= el_max - 1e-9 and el_step < 0):
+        while (e <= el_max + 1e-9 and el_step > 0) or (
+            e >= el_max - 1e-9 and el_step < 0
+        ):
             el_values.append(round(e, 6))
             e += el_step
 
@@ -41,6 +46,7 @@ def scan_grid(
             az_iter = iter(az_values)
         for az in az_iter:
             yield {"az": az, "el": el}
+
 
 def locate_target(
     station: LMSStation,
@@ -64,12 +70,8 @@ def locate_target(
 
     el_min = max(el_min, station.el_min)
     el_max = min(el_max, station.el_max)
-    
-    grid = scan_grid(
-        az_min, az_max, az_step,
-        el_min, el_max, el_step,
-        serpentine=True
-    )
+
+    grid = scan_grid(az_min, az_max, az_step, el_min, el_max, el_step, serpentine=True)
 
     for point in grid:
         if stop_event.is_set() or (deadline and time.time() > deadline):
@@ -79,9 +81,7 @@ def locate_target(
         target_el = point["el"]
 
         station.move_elevation(
-            target_el,
-            tolerance_deg=servo_tolerance_deg,
-            timeout=servo_wait_timeout
+            target_el, tolerance_deg=servo_tolerance_deg, timeout=servo_wait_timeout
         )
 
         found = station.move_azimuth_incremental(
@@ -90,7 +90,7 @@ def locate_target(
             dwell=dwell,
             stop_event=stop_event,
             timeout_deadline=deadline,
-            on_poll=lambda: station.detect_target() and station.distance > 0
+            on_poll=lambda: station.detect_target() and station.distance > 0,
         )
 
         if found:

@@ -20,7 +20,7 @@ if __name__ == "__main__":
     r, az, el = cartesian_to_spherical(7.07, 7.07, 0)
     print(f"Test 4: r={r:.3f}, az={az:.3f}, el={el:.3f}")
     # Expected: (10, 45, 0)
-    
+
     # Test 5: Another round-trip
     r, az, el = cartesian_to_spherical(10, 0, 0)
     print(f"Test 5: r={r:.3f}, az={az:.3f}, el={el:.3f}")
