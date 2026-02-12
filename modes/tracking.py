@@ -6,81 +6,129 @@ import threading
 from core.station import LMSStation
 
 
-def track_object(
-    station: LMSStation,
-    stop_event: Optional[threading.Event] = None,
-    el_step: float = 7.0,                  # Degrees to move in elevation
-    lidar_detection_threshold: float = 0.3,  # Max range to consider valid (meters)
+def compute_elevation_adjustment(
+    lidar1_dist: float,
+    lidar2_dist: float,
+    detection_threshold: float,
+    el_step: float,
 ):
-    
+    lidar1_valid = 0.01 < lidar1_dist < detection_threshold
+    lidar2_valid = 0.01 < lidar2_dist < detection_threshold
+
+    if lidar1_valid and lidar2_valid:
+        return el_step
+    elif lidar1_valid and not lidar2_valid:
+        return -el_step
+    elif lidar2_valid and not lidar1_valid:
+        return el_step
+    else:
+        return None
+
+
+def handle_miss(consecutive_misses: int, max_misses: int):
+    consecutive_misses += 1
+    log(
+        "WARN",
+        "ELEVATION TRACKING",
+        f"No detection ({consecutive_misses}/{max_misses})",
+    )
+    lost = consecutive_misses >= max_misses
+    return consecutive_misses, lost
+
+
+def track_elevation(
+    station: LMSStation,
+    lidar_lock: threading.Lock,
+    shared_data: dict,
+    stop_event: threading.Event,
+    el_step: float = 7.0,
+    lidar_detection_threshold: float = 0.3,
+):
     consecutive_misses = 0
     max_misses = 20
 
-    log("INFO", "TRACKING", "Dual-LIDAR gradient tracking started...")
+    log("INFO", "ELEVATION TRACKING", "Elevation tracking thread started")
 
     while not stop_event.is_set():
-        
-        station.lidar1.update()
-        station.lidar2.update()
-        
-        lidar1_dist = station.lidar1.distance / 100.0
-        lidar2_dist = station.lidar2.distance / 100.0
-        
-        lidar1_valid = (0.01 < lidar1_dist < lidar_detection_threshold)
-        lidar2_valid = (0.01 < lidar2_dist < lidar_detection_threshold)
-        
-        current_az = station.azimuth
+        with lidar_lock:
+            lidar1_dist, lidar2_dist = station.read_lidars()
+            shared_data.update(
+                {
+                    "lidar1_dist": lidar1_dist,
+                    "lidar2_dist": lidar2_dist,
+                    "timestamp": time.time(),
+                }
+            )
+
         current_el = station.elevation
-        
-        log(
-            "INFO",
-            "TRACKING",
-            f"L1: {lidar1_dist:.3f}m ({'✓' if lidar1_valid else '✗'}), "
-            f"L2: {lidar2_dist:.3f}m ({'✓' if lidar2_valid else '✗'}), "
-            f"az={current_az:.2f}°, el={current_el:.2f}°"
+
+        el_adjustment = compute_elevation_adjustment(
+            lidar1_dist, lidar2_dist, lidar_detection_threshold, el_step
         )
-        
-        el_adjustment = 0.0
-        
-        if lidar1_valid and lidar2_valid:
-            el_adjustment = el_step
-            log("INFO", "TRACKING", "Both detect → UP (chasing edge)")
-            
-        elif lidar1_valid and not lidar2_valid:
-            el_adjustment = -el_step
-            log("INFO", "TRACKING", "Only L1 → DOWN")
-            
-        elif lidar2_valid and not lidar1_valid:
-            el_adjustment = el_step
-            log("INFO", "TRACKING", "Only L2 → UP")
-            
-        else:
-            consecutive_misses += 1
-            if consecutive_misses >= max_misses:
-                log("INFO", "TRACKING", f"Lost target after {max_misses} attempts")
+
+        if el_adjustment is None:
+            consecutive_misses, lost_target = handle_miss(
+                consecutive_misses, max_misses
+            )
+
+            if lost_target:
+                log("ERROR", "ELEVATION TRACKING", "Lost target")
+                stop_event.set()
                 return
-            log("WARN", "TRACKING", f"No detection ({consecutive_misses}/{max_misses})")
+
             time.sleep(0.05)
             continue
-        
+
         consecutive_misses = 0
-        
-        if lidar1_valid and lidar2_valid:
-            avg_dist = (lidar1_dist + lidar2_dist) / 2.0
-        elif lidar1_valid:
-            avg_dist = lidar1_dist
-        else:
-            avg_dist = lidar2_dist
 
         target_el = current_el + el_adjustment
         target_el = max(station.el_min, min(target_el, station.el_max))
-        
+
         log(
             "INFO",
-            "TRACKING",
-            f"el={target_el:.2f}° (Δ{el_adjustment:+.2f}), "
+            "ELEVATION TRACKING",
+            f"Move EL: {current_el:.2f}° → {target_el:.2f}°",
         )
-        
-        station.move_to(az_angle=station.azimuth, el_angle=target_el, delay=0.0005)
-        
-        time.sleep(0.05)
+
+        station.move_elevation(target_el)
+
+        time.sleep(0.005)
+
+
+def track_object(
+    station: LMSStation,
+    stop_event: Optional[threading.Event] = None,
+    el_step: float = 3.0,
+    lidar_detection_threshold: float = 0.2,
+):
+    if stop_event is None:
+        stop_event = threading.Event()
+
+    lidar_lock = threading.Lock()
+    shared_data = {"lidar1_dist": 0.0, "lidar2_dist": 0.0, "timestamp": 0.0}
+
+    el_thread = threading.Thread(
+        target=track_elevation,
+        args=(
+            station,
+            lidar_lock,
+            shared_data,
+            stop_event,
+            el_step,
+            lidar_detection_threshold,
+        ),
+        name="ElevationTracking",
+        daemon=True,
+    )
+
+    log("INFO", "TRACKING", "Starting tracking...")
+    el_thread.start()
+
+    try:
+        el_thread.join()
+    except KeyboardInterrupt:
+        log("INFO", "TRACKING", "Stopping tracking...")
+        stop_event.set()
+        el_thread.join(timeout=2.0)
+
+    log("INFO", "TRACKING", "Tracking stopped")

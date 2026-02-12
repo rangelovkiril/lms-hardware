@@ -3,7 +3,7 @@ from modes.tracking import track_object
 from modes.locate import locate_target
 import threading
 
-station = LMSStation()
+station = LMSStation(threshold=1.0)
 stop_evt = threading.Event()
 
 try:
@@ -20,7 +20,9 @@ try:
         stop_event=stop_evt,
     )
     if found:
-        track_object(station=station, stop_event=stop_evt)
+        track_object(
+            station=station, stop_event=stop_evt, lidar_detection_threshold=1.0
+        )
 
 finally:
     station.disable()
