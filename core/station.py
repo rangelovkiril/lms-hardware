@@ -45,12 +45,13 @@ class LMSStation:
             f"LMS Station initialized. Threshold: {self.dist_threshold}m, El Limits: [{self.el_min}, {self.el_max}]",
         )
 
-    def detect_target(self) -> bool:
+    def read_lidars(self):
         self.lidar1.update()
         self.lidar2.update()
+        return (self.lidar1.distance / 100.0, self.lidar2.distance / 100.0)
 
-        d1: float = self.lidar1.distance / 100.0
-        d2: float = self.lidar2.distance / 100.0
+    def detect_target(self) -> bool:
+        d1, d2 = self.read_lidars()
 
         valid_points: list[float] = []
         for d in [d1, d2]:
