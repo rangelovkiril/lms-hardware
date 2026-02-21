@@ -14,8 +14,8 @@ class LMSStation:
         microstep: int = 8,
         step_delay: float = 0.005,
         threshold: float = 0.2,
-        el_min: float = 10,
-        el_max: float = 170,
+        el_min: float = 30,
+        el_max: float = 150,
     ) -> None:
 
         self.gear_ratio: int = gear_ratio
@@ -28,10 +28,11 @@ class LMSStation:
 
         self.distance: float = 0.0
         self.elevation: float = el_min
-        self.azimuth: float = 0.0
 
         self.lidar1: Lidar = Lidar(bus_id=1, address=0x10)
         self.lidar2: Lidar = Lidar(bus_id=3, address=0x10)
+        self.lidar3: Lidar = Lidar(bus_id=4, address=0x10)
+        self.lidar4: Lidar = Lidar(bus_id=5, address=0x10)
 
         self.az_actuator: AzimuthController = AzimuthController(
             gear_ratio=self.gear_ratio, arg_microstep=self.microstep
@@ -42,19 +43,31 @@ class LMSStation:
         log(
             "INFO",
             "STATION",
-            f"LMS Station initialized. Threshold: {self.dist_threshold}m, El Limits: [{self.el_min}, {self.el_max}]",
+            f"LMS Station initialized. Threshold: {self.dist_threshold}m, "
+            f"El Limits: [{self.el_min}, {self.el_max}]",
         )
+
+    @property
+    def azimuth(self) -> float:
+        return self.az_actuator.current_angle
 
     def read_lidars(self):
         self.lidar1.update()
         self.lidar2.update()
-        return (self.lidar1.distance / 100.0, self.lidar2.distance / 100.0)
+        self.lidar3.update()
+        self.lidar4.update()
+        return (
+            self.lidar1.distance / 100.0,
+            self.lidar2.distance / 100.0,
+            self.lidar3.distance / 100.0,
+            self.lidar4.distance / 100.0,
+        )
 
     def detect_target(self) -> bool:
-        d1, d2 = self.read_lidars()
+        d1, d2, d3, d4 = self.read_lidars()
 
         valid_points: list[float] = []
-        for d in [d1, d2]:
+        for d in (d1, d2, d3, d4):
             if 0.01 < d < self.dist_threshold and d != 655.35:
                 valid_points.append(d)
 
@@ -75,8 +88,6 @@ class LMSStation:
 
         clamped_el: float = max(self.el_min, min(el_angle, self.el_max))
         self.servo.set_angle(clamped_el)
-
-        self.azimuth = self.az_actuator.current_angle
         self.elevation = self.servo.get_angle()
 
     def move_azimuth_incremental(
@@ -89,9 +100,7 @@ class LMSStation:
         on_poll: Optional[Callable[[], bool]] = None,
     ) -> bool:
 
-        current_az: float = self.az_actuator.current_angle
-        self.azimuth = current_az
-
+        current_az: float = self.azimuth
         remaining: float = target_az - current_az
 
         while abs(remaining) > 1e-6:
@@ -110,8 +119,7 @@ class LMSStation:
                 log("ERROR", "STATION", f"Incremental azimuth move failed: {e}")
                 return False
 
-            current_az = self.az_actuator.current_angle
-            self.azimuth = current_az
+            current_az = self.azimuth
 
             poll_start: float = time.time()
             while (time.time() - poll_start) < max(dwell, 0.02):
@@ -145,27 +153,36 @@ class LMSStation:
     ) -> float:
         clamped_el = max(self.el_min, min(target_el, self.el_max))
         self.servo.set_angle(clamped_el)
+
         start = time.time()
         while True:
             cur_el = self.servo.get_angle()
             self.elevation = cur_el
+
             if abs(cur_el - clamped_el) <= tolerance_deg:
                 break
+
             if (time.time() - start) > timeout:
                 log(
                     "WARN",
                     "STATION",
-                    f"Servo did not reach {clamped_el}° within timeout; at {cur_el}°",
+                    f"Servo did not reach {clamped_el}° within timeout; "
+                    f"at {cur_el}°",
                 )
                 break
+
             time.sleep(0.01)
+
         return self.elevation
 
     def log_target_found(self) -> dict:
         log(
             "INFO",
             "LOCATION ROUTINE",
-            f"Found target at:\n- az: {self.azimuth}\n- el: {self.elevation}\n- range: {self.distance}",
+            f"Found target at:\n"
+            f"- az: {self.azimuth}\n"
+            f"- el: {self.elevation}\n"
+            f"- range: {self.distance}",
         )
         return {
             "timestamp": time.time(),
@@ -179,4 +196,4 @@ class LMSStation:
         self.servo.stop()
         self.lidar1.close()
         self.lidar2.close()
-        log("INFO", "STATION", f"LMS Station disabled")
+        log("INFO", "STATION", "LMS Station disabled")
