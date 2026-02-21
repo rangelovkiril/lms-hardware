@@ -16,11 +16,25 @@ def compute_elevation_adjustment(
     lidar2_valid = 0.01 < lidar2_dist < detection_threshold
 
     if lidar1_valid and lidar2_valid:
-        return el_step
-    elif lidar1_valid and not lidar2_valid:
         return -el_step
-    elif lidar2_valid and not lidar1_valid:
+    elif lidar1_valid and not lidar2_valid:
         return el_step
+    elif lidar2_valid and not lidar1_valid:
+        return -el_step
+    else:
+        return None
+
+
+def compute_azimuth_adjustment(lidar1_dist, lidar2_dist, detection_threshold, az_step):
+    lidar1_valid = 0.01 < lidar1_dist < detection_threshold
+    lidar2_valid = 0.01 < lidar2_dist < detection_threshold
+
+    if lidar1_valid and lidar2_valid:
+        return az_step if lidar2_dist < lidar1_dist else -az_step
+    elif lidar1_valid:
+        return az_step
+    elif lidar2_valid:
+        return -az_step
     else:
         return None
 
@@ -29,7 +43,7 @@ def handle_miss(consecutive_misses: int, max_misses: int):
     consecutive_misses += 1
     log(
         "WARN",
-        "ELEVATION TRACKING",
+        "TRACKING",
         f"No detection ({consecutive_misses}/{max_misses})",
     )
     lost = consecutive_misses >= max_misses
@@ -51,7 +65,7 @@ def track_elevation(
 
     while not stop_event.is_set():
         with lidar_lock:
-            lidar1_dist, lidar2_dist = station.read_lidars()
+            lidar1_dist, lidar2_dist, _, _ = station.read_lidars()
             shared_data.update(
                 {
                     "lidar1_dist": lidar1_dist,
@@ -76,7 +90,7 @@ def track_elevation(
                 stop_event.set()
                 return
 
-            time.sleep(0.05)
+            time.sleep(0.01)
             continue
 
         consecutive_misses = 0
@@ -87,18 +101,86 @@ def track_elevation(
         log(
             "INFO",
             "ELEVATION TRACKING",
-            f"Move EL: {current_el:.2f}° → {target_el:.2f}°",
+            f"Move EL: {current_el:.2f}° → {target_el:.2f}° (L1={lidar1_dist:.3f}m, L2={lidar2_dist:.3f}m)",
         )
 
         station.move_elevation(target_el)
 
-        time.sleep(0.005)
+        time.sleep(0.05)
+
+
+def track_azimuth(
+    station: LMSStation,
+    lidar_lock: threading.Lock,
+    shared_data: dict,
+    stop_event: threading.Event,
+    az_step: float = 2.0,
+    lidar_detection_threshold: float = 0.3,
+):
+
+    log("INFO", "AZIMUTH TRACKING", "Azimuth tracking thread started")
+
+    while not stop_event.is_set():
+        with lidar_lock:
+            _, _, lidar3_dist, lidar4_dist = station.read_lidars()
+            shared_data.update(
+                {
+                    "lidar3_dist": lidar3_dist,
+                    "lidar4_dist": lidar4_dist,
+                    "timestamp": time.time(),
+                }
+            )
+
+        az_before = station.azimuth
+
+        az_adjustment = compute_azimuth_adjustment(
+            lidar3_dist,
+            lidar4_dist,
+            lidar_detection_threshold,
+            az_step,
+        )
+
+        if az_adjustment != 0 and az_adjustment is not None:
+            target_az = az_before + az_adjustment
+
+            lidar1_valid = 0.01 < lidar3_dist < lidar_detection_threshold
+            lidar2_valid = 0.01 < lidar4_dist < lidar_detection_threshold
+
+            direction = "LEFT" if az_adjustment < 0 else "RIGHT"
+            active_lidar = "L1" if lidar1_valid else "L2"
+
+            log(
+                "INFO",
+                "AZIMUTH TRACKING",
+                f"{active_lidar} only → {direction}: BEFORE move az={az_before:.2f}°, targeting {target_az:.2f}°",
+            )
+
+            station.az_actuator.move_to_angle(target_az, delay=0.0005)
+
+            time.sleep(0.01)
+
+            az_after = station.azimuth
+
+            log(
+                "INFO",
+                "AZIMUTH TRACKING",
+                f"AFTER move: az={az_after:.2f}° (expected {target_az:.2f}°, actually moved {az_after - az_before:.2f}°)",
+            )
+
+        else:
+            log(
+                "DEBUG",
+                "AZIMUTH TRACKING",
+                f"Centered at az={az_before:.2f}° (both LIDARs detect)",
+            )
+            time.sleep(0.09)
 
 
 def track_object(
     station: LMSStation,
     stop_event: Optional[threading.Event] = None,
-    el_step: float = 3.0,
+    el_step: float = 2.0,
+    az_step: float = 3.0,
     lidar_detection_threshold: float = 0.2,
 ):
     if stop_event is None:
@@ -121,14 +203,33 @@ def track_object(
         daemon=True,
     )
 
-    log("INFO", "TRACKING", "Starting tracking...")
+    az_thread = threading.Thread(
+        target=track_azimuth,
+        args=(
+            station,
+            lidar_lock,
+            shared_data,
+            stop_event,
+            az_step,
+            lidar_detection_threshold,
+        ),
+        name="AzimuthTracking",
+        daemon=True,
+    )
+
+    log("INFO", "TRACKING", "Starting dual-axis tracking...")
+
     el_thread.start()
+    time.sleep(0.1)
+    az_thread.start()
 
     try:
         el_thread.join()
+        az_thread.join()
     except KeyboardInterrupt:
         log("INFO", "TRACKING", "Stopping tracking...")
         stop_event.set()
         el_thread.join(timeout=2.0)
+        az_thread.join(timeout=2.0)
 
     log("INFO", "TRACKING", "Tracking stopped")
