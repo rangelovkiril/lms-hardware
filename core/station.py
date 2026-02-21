@@ -196,4 +196,6 @@ class LMSStation:
         self.servo.stop()
         self.lidar1.close()
         self.lidar2.close()
+        self.lidar3.close()
+        self.lidar4.close()
         log("INFO", "STATION", "LMS Station disabled")
