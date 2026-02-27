@@ -12,6 +12,9 @@ class AzimuthController:
             self.motor.motor_steps_per_rev * self.motor.microstep * self.gear_ratio
         ) / 360
 
+    def enable(self):
+        self.motor.enable()
+
     def move_by_degree(self, delta_degree, delay):
         if delta_degree == 0:
             return
@@ -31,5 +34,8 @@ class AzimuthController:
         self.move_by_degree(delta, delay)
 
     def disable(self):
+        self.motor.disable()
+
+    def cleanup(self):
         self.motor.disable()
         self.motor.cleanup()

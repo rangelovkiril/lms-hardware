@@ -191,11 +191,20 @@ class LMSStation:
             "range_m": self.distance,
         }
 
+    def enable(self) -> None:
+        self.az_actuator.enable()
+        log("INFO", "STATION", "LMS Station enabled")
+
     def disable(self) -> None:
         self.az_actuator.disable()
+        self.servo.stop()
+        log("INFO", "STATION", "LMS Station disabled")
+
+    def cleanup(self) -> None:
+        self.az_actuator.cleanup()
         self.servo.stop()
         self.lidar1.close()
         self.lidar2.close()
         self.lidar3.close()
         self.lidar4.close()
-        log("INFO", "STATION", "LMS Station disabled")
+        log("INFO", "STATION", "LMS Station cleaned up")
