@@ -4,7 +4,7 @@ from modes.locate import locate_target
 import threading
 import time
 
-station = LMSStation(threshold=1.0)
+station = LMSStation(threshold=0.3)
 stop_evt = threading.Event()
 
 try:

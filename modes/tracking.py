@@ -139,6 +139,9 @@ def track_azimuth(
             lidar_detection_threshold,
             az_step,
         )
+        
+        if station.elevation > 94:
+            az_adjustment = -az_adjustment
 
         if az_adjustment != 0 and az_adjustment is not None:
             target_az = az_before + az_adjustment
