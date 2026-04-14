@@ -30,11 +30,11 @@ def compute_azimuth_adjustment(lidar1_dist, lidar2_dist, detection_threshold, az
     lidar2_valid = 0.01 < lidar2_dist < detection_threshold
 
     if lidar1_valid and lidar2_valid:
-        return az_step if lidar2_dist < lidar1_dist else -az_step
+        return -az_step if lidar2_dist < lidar1_dist else az_step
     elif lidar1_valid:
-        return az_step
-    elif lidar2_valid:
         return -az_step
+    elif lidar2_valid:
+        return az_step
     else:
         return None
 
@@ -66,6 +66,8 @@ def track_elevation(
     while not stop_event.is_set():
         with lidar_lock:
             lidar1_dist, lidar2_dist, _, _ = station.read_lidars()
+            valid = [d for d in (lidar1_dist, lidar2_dist) if 0.01 < d < lidar_detection_threshold]
+            station.distance = sum(valid) / len(valid) if valid else 0.0
             shared_data.update(
                 {
                     "lidar1_dist": lidar1_dist,
@@ -140,7 +142,7 @@ def track_azimuth(
             az_step,
         )
         
-        if station.elevation > 94:
+        if station.elevation > 94 and az_adjustment is not None:
             az_adjustment = -az_adjustment
 
         if az_adjustment != 0 and az_adjustment is not None:
@@ -176,7 +178,7 @@ def track_azimuth(
                 "AZIMUTH TRACKING",
                 f"Centered at az={az_before:.2f}° (both LIDARs detect)",
             )
-            time.sleep(0.09)
+            time.sleep(0.05)
 
 
 def track_object(
